@@ -4,6 +4,9 @@ import {
   PublicKey,
   StakeProgram,
 } from '@solana/web3.js';
+import {
+  MintLayout,
+} from '@solana/spl-token';
 import BN from 'bn.js';
 import { deserializeUnchecked } from 'borsh';
 import { Lamports, ProgramAddresses, Snapshot, StLamports } from './types';
@@ -444,7 +447,6 @@ export const getSnapshot = async (
 
     const multipleAccountInfos = await connection.getMultipleAccountsInfo(
       addressesToGetAccountInfoFor,
-      { encoding: 'jsonParsed' }
     );
 
     multipleAccountInfos.forEach((info, i) => {
@@ -476,7 +478,7 @@ export const getSnapshot = async (
 
     const stSolMintAccountInfo = accountsInfo[
       programAddresses.stSolMintAddress.toString()
-    ] as any;
+    ];
 
     // Move to next iteration if we don't have the info already fetched
     if (!stSolMintAccountInfo) {
@@ -484,7 +486,9 @@ export const getSnapshot = async (
       continue;
     }
 
-    const amount = stSolMintAccountInfo.data.parsed.info.supply;
+    const rawSupply: Buffer = MintLayout.decode(stSolMintAccountInfo.data).supply;
+    // endian-ness
+    const amount = new BN(rawSupply.reverse());
     const stSolSupply = new StLamports(amount);
 
     const stakeAccountRentExemptionBalance =
