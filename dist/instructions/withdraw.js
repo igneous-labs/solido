@@ -54,7 +54,7 @@ const getWithdrawInstruction = (snapshot, senderStSolAccountOwnerAddress, sender
     }
     const keys = [
         {
-            pubkey: snapshot.programAddresses.solidoProgramId,
+            pubkey: snapshot.programAddresses.solidoInstanceId,
             isSigner: false,
             isWritable: true,
         },
