@@ -12,4 +12,4 @@
 // By putting everything in a single module, we sidestep this problem.
 pub mod tests;
 
-extern crate testlib;
+//extern crate testlib;

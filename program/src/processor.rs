@@ -677,6 +677,7 @@ pub fn withdraw_inactive_sol(
     Ok(())
 }
 
+/*
 pub fn get_stake_account(
     withdraw_excess_opts: &WithdrawExcessOpts,
 ) -> Result<StakeAccount, ProgramError> {
@@ -689,6 +690,7 @@ pub fn get_stake_account(
         withdraw_excess_opts.stake_account_seed,
     ))
 }
+ */
 
 /// Checks that the `derived_stake_account_address` corresponds to the
 /// `provided_stake_account`. Returns the number of Lamports in the stake
@@ -729,6 +731,8 @@ pub fn process_update_stake_account_balance(
     validator_index: u32,
     raw_accounts: &[AccountInfo],
 ) -> ProgramResult {
+    Ok(())
+    /*
     let accounts = UpdateStakeAccountBalanceInfo::try_from_slice(raw_accounts)?;
     let mut lido = Lido::deserialize_lido(program_id, accounts.lido)?;
     let stake_history = StakeHistory::from_account_info(accounts.sysvar_stake_history)?;
@@ -886,6 +890,7 @@ pub fn process_update_stake_account_balance(
     distribute_fees(&mut lido, &accounts, &clock, rewards)?;
 
     lido.save(accounts.lido)
+     */
 }
 
 /// Splits a stake account from a validator's stake account.

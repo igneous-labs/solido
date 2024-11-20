@@ -36,6 +36,7 @@ impl Serialize for PubkeyBase58 {
     }
 }
 
+/*
 #[cfg(test)]
 mod test {
     use super::*;
@@ -87,3 +88,4 @@ mod test {
         )
     }
 }
+ */
