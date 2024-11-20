@@ -17,24 +17,21 @@ use solana_sdk::signer::Signer;
 use solido_cli_common::error::{Abort, CliError, Error};
 use solido_cli_common::snapshot::{Config, OutputMode, SnapshotClient};
 
-use crate::commands_anker::AnkerOpts;
 use crate::commands_multisig::MultisigOpts;
 use crate::commands_solido::{
     command_add_maintainer, command_add_validator, command_create_solido,
-    command_deactivate_validator, command_deactivate_validator_if_commission_exceeds_max,
-    command_deposit, command_remove_maintainer, command_set_max_commission_percentage,
+    command_create_v2_accounts, command_deactivate_validator,
+    command_deactivate_validator_if_commission_exceeds_max, command_deposit,
+    command_migrate_state_to_v2, command_remove_maintainer, command_set_max_commission_percentage,
     command_show_solido, command_show_solido_authorities, command_withdraw,
 };
 use crate::config::*;
 
-mod anker_state;
-mod commands_anker;
 mod commands_multisig;
 mod commands_solido;
 mod config;
 mod daemon;
 mod maintenance;
-mod serialization_utils;
 mod spl_token_utils;
 
 /// Solido -- Interact with Lido for Solana.
@@ -47,7 +44,9 @@ mod spl_token_utils;
 // we write the default values on the rustdoc so Clap can print them in help
 // messages.
 #[derive(Parser, Debug)]
-#[clap(after_long_help = r#"CONFIGURATION:
+#[clap(
+    version,
+    after_long_help = r#"CONFIGURATION:
     All of the options of this program can also be provided as an environment
     variable with "SOLIDO_" prefix. E.g. to provide --keypair-path, set the
     SOLIDO_KEYPAIR_PATH environment variable.
@@ -61,7 +60,8 @@ mod spl_token_utils;
     {
       "cluster": "https://api.mainnet-beta.solana.com",
       "keypair_path": "/path/to/id.json"
-    }"#)]
+    }"#
+)]
 struct Opts {
     /// The contents of a keypair file to sign and pay with, as json array.
     ///
@@ -205,15 +205,18 @@ REWARDS
     /// Interact with a deployed Multisig program for governance tasks.
     Multisig(MultisigOpts),
 
-    /// Interact with the Anker (Anchor Protocol integration) program.
-    Anker(AnkerOpts),
-
     /// Set max_commission_percentage to control validator's fees.
     /// If validators exeed the threshold they will be deactivated by
     /// a maintainer.
     ///
     /// Requires the manager to sign.
     SetMaxValidationCommission(SetMaxValidationCommissionOpts),
+
+    /// Update Solido state to V2
+    MigrateStateToV2(MigrateStateToV2Opts),
+
+    /// Create new Solido V2 accounts
+    CreateV2Accounts(CreateV2AccountsOpts),
 }
 
 fn print_output<Output: fmt::Display + Serialize>(mode: OutputMode, output: &Output) {
@@ -263,9 +266,18 @@ fn main() {
         output_mode,
     };
 
+    fn check_end_of_epoch_threshold(threshold: u8) {
+        if threshold > 100 {
+            eprint!(
+                "End of epoch threshold should be less than 100, but is {}",
+                threshold
+            );
+            std::process::exit(1);
+        }
+    }
+
     merge_with_config_and_environment(&mut opts.subcommand, config_file.as_ref());
     match opts.subcommand {
-        SubCommand::Anker(cmd_opts) => commands_anker::main(&mut config, &cmd_opts),
         SubCommand::CreateSolido(cmd_opts) => {
             let result = config.with_snapshot(|config| command_create_solido(config, &cmd_opts));
             let output = result.ok_or_abort_with("Failed to create Solido instance.");
@@ -273,6 +285,7 @@ fn main() {
         }
         SubCommand::Multisig(cmd_opts) => commands_multisig::main(&mut config, cmd_opts),
         SubCommand::PerformMaintenance(cmd_opts) => {
+            check_end_of_epoch_threshold(*cmd_opts.end_of_epoch_threshold());
             // This command only performs one iteration, `RunMaintainer` runs continuously.
             let result = config
                 .with_snapshot(|config| maintenance::run_perform_maintenance(config, &cmd_opts));
@@ -287,6 +300,7 @@ fn main() {
             }
         }
         SubCommand::RunMaintainer(cmd_opts) => {
+            check_end_of_epoch_threshold(*cmd_opts.end_of_epoch_threshold());
             daemon::main(&mut config, &cmd_opts);
         }
         SubCommand::AddValidator(cmd_opts) => {
@@ -346,6 +360,17 @@ fn main() {
             let output = result.ok_or_abort_with("Failed to set max validation commission.");
             print_output(output_mode, &output);
         }
+        SubCommand::MigrateStateToV2(cmd_opts) => {
+            let result = command_migrate_state_to_v2(&mut config, &cmd_opts);
+            let output = result.ok_or_abort_with("Failed to update Solido state to V2.");
+            print_output(output_mode, &output);
+        }
+        SubCommand::CreateV2Accounts(cmd_opts) => {
+            let result =
+                config.with_snapshot(|config| command_create_v2_accounts(config, &cmd_opts));
+            let output = result.ok_or_abort_with("Failed to create new Solido V2 accounts.");
+            print_output(output_mode, &output);
+        }
     }
 }
 
@@ -354,7 +379,6 @@ fn merge_with_config_and_environment(
     config_file: Option<&ConfigFile>,
 ) {
     match subcommand {
-        SubCommand::Anker(opts) => opts.merge_with_config_and_environment(config_file),
         SubCommand::CreateSolido(opts) => opts.merge_with_config_and_environment(config_file),
         SubCommand::AddValidator(opts) => opts.merge_with_config_and_environment(config_file),
         SubCommand::DeactivateValidator(opts) => {
@@ -376,6 +400,8 @@ fn merge_with_config_and_environment(
         SubCommand::SetMaxValidationCommission(opts) => {
             opts.merge_with_config_and_environment(config_file)
         }
+        SubCommand::MigrateStateToV2(opts) => opts.merge_with_config_and_environment(config_file),
+        SubCommand::CreateV2Accounts(opts) => opts.merge_with_config_and_environment(config_file),
     }
 }
 

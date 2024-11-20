@@ -57,6 +57,16 @@ print(f'> Treasury account owner:      {treasury_account_owner}')
 developer_account_owner = create_test_account('tests/.keys/developer-fee-key.json')
 print(f'> Developer fee account owner: {developer_account_owner}')
 
+validator_list_account_owner = create_test_account(
+    'tests/.keys/validator-list-key.json', fund=False
+)
+print(f'> Validator list account owner: {validator_list_account_owner}')
+
+maintainer_list_account_owner = create_test_account(
+    'tests/.keys/maintainer-list-key.json', fund=False
+)
+print(f'> Maintainer list account owner: {maintainer_list_account_owner}')
+
 print('\nUploading Solido program ...')
 solido_program_id = solana_program_deploy(get_solido_program_path() + '/lido.so')
 print(f'> Solido program id is {solido_program_id}.')
@@ -82,10 +92,7 @@ multisig_pda = multisig_data['multisig_program_derived_address']
 print(f'> Created instance at {multisig_instance}.')
 
 
-def approve_and_execute(
-    transaction_to_approve: str,
-    signer: TestAccount,
-) -> None:
+def approve_and_execute(transaction_to_approve: str, signer: TestAccount) -> None:
     """
     Helper to approve and execute a transaction with a single key.
     """
@@ -182,6 +189,10 @@ result = solido(
     treasury_account_owner.pubkey,
     '--developer-account-owner',
     developer_account_owner.pubkey,
+    '--validator-list-key-path',
+    validator_list_account_owner.keypair_path,
+    '--maintainer-list-key-path',
+    maintainer_list_account_owner.keypair_path,
     '--multisig-address',
     multisig_instance,
     keypair_path=test_addrs[0].keypair_path,
@@ -191,8 +202,20 @@ solido_address = result['solido_address']
 treasury_account = result['treasury_account']
 developer_account = result['developer_account']
 st_sol_mint_account = result['st_sol_mint_address']
+validator_list_address = result['validator_list_address']
+maintainer_list_address = result['maintainer_list_address']
 
 print(f'> Created instance at {solido_address}.')
+
+output = {
+    "multisig_program_id": multisig_program_id,
+    "multisig_address": multisig_instance,
+    "solido_program_id": solido_program_id,
+    "solido_address": solido_address,
+    "st_sol_mint": st_sol_mint_account,
+}
+with open('../solido_test.json', 'w') as outfile:
+    json.dump(output, outfile, indent=4)
 
 solido_instance = solido(
     'show-solido',
@@ -307,21 +330,14 @@ solido_instance = solido(
     solido_address,
 )
 
-assert solido_instance['solido']['validators']['entries'][0] == {
+assert solido_instance['validators']['entries'][0] == {
     'pubkey': validator.vote_account.pubkey,
-    'entry': {
-        'stake_seeds': {
-            'begin': 0,
-            'end': 0,
-        },
-        'unstake_seeds': {
-            'begin': 0,
-            'end': 0,
-        },
-        'stake_accounts_balance': 0,
-        'unstake_accounts_balance': 0,
-        'active': True,
-    },
+    'stake_seeds': {'begin': 0, 'end': 0},
+    'unstake_seeds': {'begin': 0, 'end': 0},
+    'stake_accounts_balance': 0,
+    'unstake_accounts_balance': 0,
+    'effective_stake_balance': 0,
+    'active': True,
 }, f'Unexpected validator entry, in {json.dumps(solido_instance, indent=True)}'
 
 maintainer = create_test_account('tests/.keys/maintainer-account-key.json')
@@ -353,10 +369,8 @@ solido_instance = solido(
     '--solido-address',
     solido_address,
 )
-assert solido_instance['solido']['maintainers']['entries'][0] == {
-    'pubkey': maintainer.pubkey,
-    'entry': None,
-}
+
+assert solido_instance['maintainers']['entries'][0] == {'pubkey': maintainer.pubkey}
 
 print(f'> Removing maintainer {maintainer}')
 transaction_result = solido(
@@ -383,7 +397,7 @@ solido_instance = solido(
     solido_address,
 )
 
-assert len(solido_instance['solido']['maintainers']['entries']) == 0
+assert len(solido_instance['maintainers']['entries']) == 0
 
 print(f'> Adding maintainer {maintainer} again')
 transaction_result = solido(
@@ -417,6 +431,21 @@ def perform_maintenance() -> Any:
         'anytime',
         keypair_path=maintainer.keypair_path,
     )
+
+
+def consume_maintainence_instructions(verbose: bool = False) -> Any:
+    """
+    Perform maintenance instructions till no more left
+    """
+    last_result = None
+    while True:
+        maintainance_result = perform_maintenance()
+        if maintainance_result is not None:
+            last_result = maintainance_result
+            if verbose:
+                print(maintainance_result)
+        else:
+            return last_result
 
 
 print('\nRunning maintenance (should be no-op if epoch is unchanged) ...')
@@ -488,10 +517,7 @@ print('> There was nothing to do, as expected.')
 
 def add_validator_and_approve(keypath_account: str, keypath_vote: str) -> Validator:
     # Adding another validator
-    (validator, transaction_result) = add_validator(
-        'validator-account-key-1',
-        'validator-vote-account-key-1',
-    )
+    (validator, transaction_result) = add_validator(keypath_account, keypath_vote)
 
     transaction_address = transaction_result['transaction_address']
     approve_and_execute(transaction_address, test_addrs[0])
@@ -531,16 +557,16 @@ expected_result = {
 }
 assert result == expected_result, f'\nExpected: {expected_result}\nActual:   {result}'
 
-# By donating to the stake account, we trigger maintenance to run WithdrawInactiveStake.
+# By donating to the stake account, we trigger maintenance to run UpdateStakeAccountBalance.
 print(
     f'\nDonating to stake account {stake_account_address}, then running maintenance ...'
 )
 solana('transfer', stake_account_address, '0.1')
 
 result = perform_maintenance()
-assert 'WithdrawInactiveStake' in result
+assert 'UpdateStakeAccountBalance' in result
 expected_result = {
-    'WithdrawInactiveStake': {
+    'UpdateStakeAccountBalance': {
         'validator_vote_account': validator.vote_account.pubkey,
         'expected_difference_stake_lamports': 100_000_000,  # We donated 0.1 SOL.
         'unstake_withdrawn_to_reserve_lamports': 1_499_750_000,  # Amount that was unstaked for the newcomming validator.
@@ -553,7 +579,7 @@ expected_result = {
 
 assert result == expected_result, f'\nExpected: {expected_result}\nActual:   {result}'
 
-print('> Performed WithdrawInactiveStake as expected.')
+print('> Performed UpdateStakeAccountBalance as expected.')
 
 
 print('\nDonating 1.0 SOL to reserve, then running maintenance ...')
@@ -624,7 +650,7 @@ solido_instance = solido(
     '--solido-address',
     solido_address,
 )
-assert not solido_instance['solido']['validators']['entries'][0]['entry'][
+assert not solido_instance['validators']['entries'][0][
     'active'
 ], 'Validator should be inactive after deactivation.'
 print('> Validator is inactive as expected.')
@@ -652,7 +678,7 @@ solido_instance = solido(
     solido_address,
 )
 # Should have bumped the validator's `stake_seeds` and `unstake_seeds`.
-val = solido_instance['solido']['validators']['entries'][0]['entry']
+val = solido_instance['validators']['entries'][0]
 assert val['stake_seeds'] == {'begin': 1, 'end': 1}
 assert val['unstake_seeds'] == {'begin': 1, 'end': 2}
 
@@ -660,7 +686,7 @@ assert val['unstake_seeds'] == {'begin': 1, 'end': 2}
 print('\nRunning maintenance (should withdraw from validator\'s unstake account) ...')
 result = perform_maintenance()
 expected_result = {
-    'WithdrawInactiveStake': {
+    'UpdateStakeAccountBalance': {
         'validator_vote_account': validator.vote_account.pubkey,
         'expected_difference_stake_lamports': 0,
         'unstake_withdrawn_to_reserve_lamports': 1_500_250_000,
@@ -681,9 +707,7 @@ expected_result = {
 print('\nRunning maintenance (should remove the validator) ...')
 result = perform_maintenance()
 expected_result = {
-    'RemoveValidator': {
-        'validator_vote_account': validator.vote_account.pubkey,
-    }
+    'RemoveValidator': {'validator_vote_account': validator.vote_account.pubkey}
 }
 assert result == expected_result, f'\nExpected: {expected_result}\nActual:   {result}'
 
@@ -694,7 +718,7 @@ solido_instance = solido(
     '--solido-address',
     solido_address,
 )
-number_validators = len(solido_instance['solido']['validators']['entries'])
+number_validators = len(solido_instance['validators']['entries'])
 assert (
     number_validators == 1
 ), f'\nExpected no validators\nGot: {number_validators} validators'
@@ -718,19 +742,6 @@ expected_result = {
     }
 }
 assert result == expected_result, f'\nExpected: {expected_result}\nActual:   {result}'
-
-
-def consume_maintainence_instructions(verbose: bool = False) -> None:
-    """
-    Perform maintenance instructions till no more left
-    """
-    while True:
-        maintainance_result = perform_maintenance()
-        if maintainance_result is not None:
-            if verbose:
-                print(maintainance_result)
-        else:
-            break
 
 
 print('\nConsuming all maintainence instructions')
@@ -796,3 +807,75 @@ expected_result = {
 assert (
     maintainance_result == expected_result
 ), f'\nExpected: {expected_result}\nActual:   {maintainance_result}'
+
+#############################################################################
+
+print(
+    '\nRestore max validation commission to %d%% ...'
+    % (MAX_VALIDATION_COMMISSION_PERCENTAGE)
+)
+transaction_status = set_max_validation_commission(MAX_VALIDATION_COMMISSION_PERCENTAGE)
+assert transaction_status['did_execute'] == True
+
+validator_3 = add_validator_and_approve(
+    'validator-account-key-3', 'validator-vote-account-key-3'
+)
+solido_instance = solido(
+    'show-solido',
+    '--solido-program-id',
+    solido_program_id,
+    '--solido-address',
+    solido_address,
+)
+number_validators = len(solido_instance['validators']['entries'])
+assert (
+    number_validators == 2
+), f'\nExpected 2 validators\nGot: {number_validators} validators'
+
+print(f'\nClosing vote account {validator_3.vote_account.pubkey}')
+solana(
+    "close-vote-account",
+    validator_3.vote_account.pubkey,
+    "tests/.keys/test-key-1.json",
+    "--authorized-withdrawer",
+    validator_3.withdrawer_account.keypair_path,
+)
+
+print('\nConsuming all maintainence instructions (should remove all validators) ...')
+consume_maintainence_instructions(False)
+solido_instance = solido(
+    'show-solido',
+    '--solido-program-id',
+    solido_program_id,
+    '--solido-address',
+    solido_address,
+)
+number_validators = len(solido_instance['validators']['entries'])
+assert number_validators == 0
+
+
+# def test_rewards():
+#     def balance(v1, v2, v3, reserve):
+#         return v1 + v2 + v3 + reserve
+
+#     s1_before = balance(8.048978427, 9.054659727, 7.948410296, 2.4 + 0.00089088)
+#     s1 = balance(9.150682817, 9.054659727, 9.150682816, 0.09691397)
+#     assert s1_before == s1
+#     s2 = balance(9.210892341, 9.126038084, 9.212256215, 0.10147973)
+#     rewards = s2 - s1
+
+#     def rewards_from_fees(t1, d1, a1, t2, d2, a2):
+#         dt = t2 - t1
+#         print(f"dt {dt}, {0.04*rewards}, {dt-0.04*rewards}")
+#         dd = d2 - d1
+#         print(f"dd {dd}, {0.01*rewards}, {dd-0.01*rewards}")
+#         da = a2 - a1
+#         print(f"da {da}, {0.95*rewards}, {da-0.95*rewards}")
+#         return dt + dd + da
+
+#     rewards_alt = rewards_from_fees(
+#         0.008198959, 0.003279583, 0.147581266, 0.016108040, 0.005256852, 0.335421956
+#     )
+
+#     diff = rewards - rewards_alt
+#     print(diff)

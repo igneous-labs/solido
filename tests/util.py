@@ -27,6 +27,10 @@ class TestAccount(NamedTuple):
 
 
 def run(*args: str) -> str:
+    return str(run_process(*args).stdout)
+
+
+def run_process(*args: str) -> Any:
     """
     Run a program, ensure it exits with code 0, return its stdout.
     """
@@ -45,7 +49,7 @@ def run(*args: str) -> str:
             print('Stderr:', err.stderr)
         raise
 
-    return result.stdout
+    return result
 
 
 def get_solido_program_path() -> str:
@@ -86,7 +90,8 @@ def solido(*args: str, keypair_path: Optional[str] = None) -> Any:
         *args,
     )
     if keypair_path is not None and keypair_path.startswith('usb://ledger'):
-        output = '\n'.join(output.split('\n')[2:])
+        # get json at the end of output
+        output = output[output.find("{") :]
     if output == '':
         return {}
     else:
@@ -199,11 +204,7 @@ def create_stake_account(keypair_fname: str) -> TestAccount:
     Generate a stake account funded with 2 Sol, returns its public key.
     """
     test_account = create_test_account(keypair_fname, fund=False)
-    solana(
-        'create-stake-account',
-        keypair_fname,
-        '2',
-    )
+    solana('create-stake-account', keypair_fname, '2')
     return test_account
 
 
@@ -229,13 +230,7 @@ def create_vote_account(
     # Publish validator info for this new validator, because `show-solido`
     # requires validator info to be present.
     name = f'Validator for {vote_key_fname}'
-    solana(
-        'validator-info',
-        'publish',
-        '--keypair',
-        validator_key_fname,
-        name,
-    )
+    solana('validator-info', 'publish', '--keypair', validator_key_fname, name)
     return test_account, withdrawer_account
 
 
@@ -283,7 +278,8 @@ def multisig(*args: str, keypair_path: Optional[str] = None) -> Any:
     # ✅ Approved
     # These lines should be ignored
     if keypair_path is not None and keypair_path.startswith('usb://ledger'):
-        output = '\n'.join(output.split('\n')[2:])
+        # get json at the end of output
+        output = output[output.find("{") :]
     if output == '':
         return {}
     else:
@@ -296,10 +292,7 @@ def multisig(*args: str, keypair_path: Optional[str] = None) -> Any:
 
 
 def get_approve_and_execute(
-    *,
-    multisig_program_id: str,
-    multisig_instance: str,
-    signer_keypair_paths: List[str],
+    *, multisig_program_id: str, multisig_instance: str, signer_keypair_paths: List[str]
 ) -> Callable[[str], None]:
     """
     Return a function, `approve_and_execute`, which approves and executes the
@@ -356,19 +349,12 @@ def solana_rpc(method: str, params: List[Any]) -> Any:
     suitable for serious use, but for tests or checking things on devnet it's
     useful.
     """
-    body = {
-        'jsonrpc': '2.0',
-        'id': str(uuid4()),
-        'method': method,
-        'params': params,
-    }
+    body = {'jsonrpc': '2.0', 'id': str(uuid4()), 'method': method, 'params': params}
     req = request.Request(
         get_network(),
         method='POST',
         data=json.dumps(body).encode('utf-8'),
-        headers={
-            'Content-Type': 'application/json',
-        },
+        headers={'Content-Type': 'application/json'},
     )
     response = request.urlopen(req)
     return json.load(response)
@@ -379,8 +365,7 @@ def rpc_get_account_info(address: str) -> Optional[Dict[str, Any]]:
     Call getAccountInfo, see https://docs.solana.com/developing/clients/jsonrpc-api#getaccountinfo.
     """
     result: Dict[str, Any] = solana_rpc(
-        method='getAccountInfo',
-        params=[address, {'encoding': 'jsonParsed'}],
+        method='getAccountInfo', params=[address, {'encoding': 'jsonParsed'}]
     )
     # The value is either an object with decoded account info, or None, if the
     # account does not exist.

@@ -46,8 +46,7 @@ use solana_sdk::transaction::Transaction;
 use solana_transaction_status::{TransactionDetails, UiTransactionEncoding};
 use solana_vote_program::vote_state::VoteState;
 
-use anker::state::Anker;
-use lido::state::Lido;
+use lido::state::{AccountList, Lido, ListEntry};
 use lido::token::Lamports;
 use spl_token::solana_program::hash::Hash;
 
@@ -217,6 +216,16 @@ impl<'a> Snapshot<'a> {
         }
     }
 
+    /// Get list of accounts of type T from Solido
+    pub fn get_account_list<T: ListEntry>(
+        &mut self,
+        address: &Pubkey,
+    ) -> crate::Result<AccountList<T>> {
+        let list_account = self.get_account(address)?;
+        let mut data = list_account.data.to_vec();
+        AccountList::from(&mut data).map_err(|e| e.into())
+    }
+
     /// Read an account and immediately bincode-deserialize it.
     pub fn get_bincode<T: Sysvar>(&mut self, address: &Pubkey) -> crate::Result<T> {
         let account = self.get_account(address)?;
@@ -358,25 +367,6 @@ impl<'a> Snapshot<'a> {
         }
     }
 
-    /// Read the account and deserialize the Anker struct.
-    pub fn get_anker(&mut self, anker_address: &Pubkey) -> crate::Result<Anker> {
-        let account = self.get_account(anker_address)?;
-        match try_from_slice_unchecked::<Anker>(&account.data) {
-            Ok(anker) => Ok(anker),
-            Err(err) => {
-                let error: Error = Box::new(SerializationError {
-                    cause: Some(err.into()),
-                    address: *anker_address,
-                    context: format!(
-                        "Failed to deserialize Anker struct, data length is {} bytes.",
-                        account.data.len()
-                    ),
-                });
-                Err(error.into())
-            }
-        }
-    }
-
     /// Return the amount in an SPL token account.
     pub fn get_spl_token_balance(&mut self, address: &Pubkey) -> crate::Result<u64> {
         let account: spl_token::state::Account = self.get_unpack(address)?;
@@ -495,7 +485,11 @@ pub struct SnapshotClient {
 /// on their validator. At the time of writing, it defaults to 100.
 fn is_too_many_inputs_error(error: &ClientError) -> bool {
     match error.kind() {
-        ClientErrorKind::RpcError(RpcError::RpcRequestError(message)) => {
+        ClientErrorKind::RpcError(RpcError::RpcResponseError {
+            code: _,
+            message,
+            data: _,
+        }) => {
             // Unfortunately, there is no way to get a structured error; all we
             // get is a string that looks like this:
             //

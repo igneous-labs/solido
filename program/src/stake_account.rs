@@ -66,7 +66,7 @@ impl StakeBalance {
 fn take_pubkey(data: &[u8]) -> (Pubkey, &[u8]) {
     let mut prefix = [0u8; 32];
     prefix.copy_from_slice(&data[..32]);
-    (Pubkey::new(&prefix), &data[32..])
+    (Pubkey::new_from_array(prefix), &data[32..])
 }
 
 /// Consume a little-endian `u32` from the data start, return it and the remainder.
@@ -184,6 +184,7 @@ impl StakeAccount {
         )
     }
     /// Extract the stake balance from a delegated stake account.
+    /*
     pub fn from_delegated_account(
         account_lamports: Lamports,
         stake: &Stake,
@@ -194,9 +195,10 @@ impl StakeAccount {
         let target_epoch = clock.epoch;
         let history = Some(stake_history);
 
-        let mut state = stake
-            .delegation
-            .stake_activating_and_deactivating(target_epoch, history);
+        let mut state =
+            stake
+                .delegation
+                .stake_activating_and_deactivating(target_epoch, history, None);
 
         // `stake_activating_and_deactivating` counts deactivating stake both as
         // part of the active lamports, and as part of the deactivating
@@ -225,6 +227,7 @@ impl StakeAccount {
             seed,
         }
     }
+     */
 
     /// Returns `true` if the stake account is active, `false` otherwise.
     pub fn is_active(&self) -> bool {
@@ -267,7 +270,10 @@ impl StakeAccount {
                 return true;
             }
             // Two activating accounts that share an activation epoch, during the activation epoch.
-            if self.is_activating() && merge_from.is_activating() {
+            if self.is_activating()
+                && merge_from.is_activating()
+                && self.activation_epoch == merge_from.activation_epoch
+            {
                 return true;
             }
         }
