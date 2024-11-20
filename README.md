@@ -1,7 +1,5 @@
 # Lido for Solana
 
-**Note:** The new upstream is at [lidofinance/solido](https://github.com/lidofinance/solido).
-
 *Lido for Solana* (“Solido” for short) is a [Lido DAO][lido]-governed liquid
 staking protocol for the Solana blockchain. Anyone who stakes their SOL tokens
 with Lido will be issued an on-chain representation of the SOL staking position
@@ -42,8 +40,6 @@ and documentation, are in a different repository, which is not yet public.
 
  * `program` — Solido, the on-chain Solana BPF program that implements Lido for
    Solana.
- * `anker` — Anker, the on-chain Solana BPF program that implements integration
-   with the [Anchor Protocol][anchor-protocol] on [Terra][terra].
  * `multisig` — A pinned version of the on-chain [Serum multisig
    program][multisig], used as the upgrade authority of the Solido program, and
    as the manager of the Solido instance.
@@ -51,7 +47,7 @@ and documentation, are in a different repository, which is not yet public.
    programs.
  * `docker` — Dockerfiles for reproducible builds, and for the maintainer image.
  * `testlib` — Utilities for writing tests using the `solana-program-test` test
-   framework. The individual tests are in `program/tests` and `anker/tests`.
+   framework. The individual tests are in `program/tests`.
  * `tests` — Scripts that test the actual `solido` binary and on-chain program.
 
 [multisig]:        https://github.com/project-serum/multisig
@@ -75,6 +71,8 @@ you need:
    * `libhidapi-dev`
    * `pkg-config`
    * `openssl`
+   * `build-essential`
+   * `libsqlite3-dev`
 
 The Solana version that we test against is listed in our [CI config][ci-config].
 
@@ -82,7 +80,7 @@ The Solana version that we test against is listed in our [CI config][ci-config].
 [solana-tools]: https://docs.solana.com/cli/install-solana-cli-tools
 [docker]:       https://docs.docker.com/engine/install/
 [reproduce]:    https://chorusone.github.io/solido/development/reproducibility/
-[ci-config]:    https://github.com/ChorusOne/solido/blob/main/.github/workflows/build.yml
+[ci-config]:    https://github.com/lidofinance/solido/blob/main/.github/workflows/build.yml
 
 ### Cloning the repository
 
@@ -90,7 +88,7 @@ This repository contains a Git submodule. To clone it, pass
 `--recurse-submodules`:
 
 ```console
-$ git clone --recurse-submodules https://github.com/chorusone/solido
+$ git clone --recurse-submodules https://github.com/lidofinance/solido
 ```
 
 If you already cloned the repository without submodules, you can still
@@ -124,7 +122,7 @@ $ cargo build-bpf
 $ cargo test-bpf
 ```
 
-The programs `lido.so`, `anker.so`, and `serum_multisig.so` can then be found in
+The programs `lido.so`, and `serum_multisig.so` can then be found in
 `target/deploy`.
 
 ### Docker container

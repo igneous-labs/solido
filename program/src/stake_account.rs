@@ -194,9 +194,10 @@ impl StakeAccount {
         let target_epoch = clock.epoch;
         let history = Some(stake_history);
 
-        let mut state = stake
-            .delegation
-            .stake_activating_and_deactivating(target_epoch, history);
+        let mut state =
+            stake
+                .delegation
+                .stake_activating_and_deactivating(target_epoch, history, None);
 
         // `stake_activating_and_deactivating` counts deactivating stake both as
         // part of the active lamports, and as part of the deactivating
@@ -267,7 +268,10 @@ impl StakeAccount {
                 return true;
             }
             // Two activating accounts that share an activation epoch, during the activation epoch.
-            if self.is_activating() && merge_from.is_activating() {
+            if self.is_activating()
+                && merge_from.is_activating()
+                && self.activation_epoch == merge_from.activation_epoch
+            {
                 return true;
             }
         }
