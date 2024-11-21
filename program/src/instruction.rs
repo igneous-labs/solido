@@ -218,7 +218,7 @@ impl LidoInstruction {
         // `Borsh::serialize`, which takes an arbitrary writer, and which can
         // therefore return an IoError. But when serializing to a vec, there
         // is no IO, so for this particular writer, it should never fail.
-        self.try_to_vec()
+        borsh::to_vec(self)
             .expect("Serializing an Instruction to Vec<u8> does not fail.")
     }
 }
@@ -630,11 +630,10 @@ pub fn change_reward_distribution(
     Instruction {
         program_id: *program_id,
         accounts: accounts.to_vec(),
-        data: LidoInstruction::ChangeRewardDistribution {
+        data: borsh::to_vec(&LidoInstruction::ChangeRewardDistribution {
             new_reward_distribution,
-        }
+        })
         // Serializing the instruction should never fail.
-        .try_to_vec()
         .unwrap(),
     }
 }
@@ -811,8 +810,7 @@ pub fn merge_stake(
         program_id: *program_id,
         accounts: accounts.to_vec(),
         // this can fail on OutOfMemory
-        data: LidoInstruction::MergeStakeV2 { validator_index }
-            .try_to_vec()
+        data: borsh::to_vec(&LidoInstruction::MergeStakeV2 { validator_index })
             .unwrap(), // This should never fail.
     }
 }
